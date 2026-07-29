@@ -1,7 +1,0 @@
-<Project>
-  <ItemDefinitionGroup>
-    <ClCompile>
-      <AdditionalIncludeDirectories>$(MSBuildThisFileDirectory)..\wtl\lib\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-    </ClCompile>
-  </ItemDefinitionGroup>
-</Project>

@@ -1,0 +1,3 @@
+[submodule "third_party/foobar2000-sdk"]
+	path = third_party/foobar2000-sdk
+	url = https://github.com/token0/foobar2000-sdk.git
