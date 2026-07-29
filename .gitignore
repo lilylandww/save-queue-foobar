@@ -1,0 +1,44 @@
+# --- Visual Studio / MSBuild ---
+[Bb]uild/
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+ARM64/
+ARM64EC/
+[Ww][Ii][Nn]32/
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.map
+*.tlog
+*.idb
+*.iobj
+*.ipdb
+*.lastbuildstate
+*.cache
+*.user
+*.suo
+*.aps
+*.opensdf
+*.sdf
+*.opendb
+*.VC.db
+*.VC.opendb
+
+# --- VS workspace / temp files ---
+.vs/
+.vscode/
+*.swp
+*~.nib
+
+# --- OS junk ---
+Thumbs.db
+.DS_Store
+
+# --- Never ignore the SDK's shipped prebuilt import libraries ---
+!third_party/foobar2000-sdk/foobar2000/shared/shared-*.lib
