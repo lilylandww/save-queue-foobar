@@ -1,11 +1,10 @@
 # save-queue-foobar
 
 A [foobar2000](https://www.foobar2000.org/) component that **saves and restores the
-playback queue** automatically on application exit and startup, as well as to manual plain-text files (`.fbq2k`). Useful for keeping a queue across restarts, moving it between machines, or stashing a few "play next" lists.
+playback queue** to a plain-text file (`.fbq2k`). Useful for keeping a queue across
+restarts, moving it between machines, or stashing a few "play next" lists.
 
-### ✨ Features
-- **Automatic Persistence**: Automatically saves your active queue when foobar2000 exits and restores it when foobar2000 starts up.
-- **Manual Commands**: Adds a **File → Save Queue** menu group with three commands:
+It adds a **File → Save Queue** menu group with three commands:
 
 | Command | What it does |
 | --- | --- |

@@ -17,6 +17,37 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify foobar2000 SDK checkout is complete
+        shell: pwsh
+        run: |
+          $required = @(
+            'third_party/foobar2000-sdk/foobar2000/SDK/foobar2000_SDK.vcxproj'
+            'third_party/foobar2000-sdk/foobar2000/helpers/foobar2000_sdk_helpers.vcxproj'
+            'third_party/foobar2000-sdk/foobar2000/foobar2000_component_client/foobar2000_component_client.vcxproj'
+            'third_party/foobar2000-sdk/pfc/pfc.vcxproj'
+            'third_party/foobar2000-sdk/libPPUI/libPPUI.vcxproj'
+            'third_party/foobar2000-sdk/foobar2000/shared/shared-Win32.lib'
+            'third_party/foobar2000-sdk/foobar2000/shared/shared-x64.lib'
+            'third_party/foobar2000-sdk/foobar2000/shared/shared-ARM64EC.lib'
+          )
+          $missing = @()
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              $missing += $path
+            }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Host "::error::The foobar2000 SDK tree is incomplete in this checkout/commit. Missing files (paths are relative to the repo root):"
+            foreach ($path in $missing) {
+              Write-Host "::error::$path"
+            }
+            Write-Host "::error::The foobar2000 SDK files above must be committed to the repository. Commit them and push again."
+            exit 1
+          }
+          Write-Host "OK: foobar2000 SDK tree is complete - all 8 required files are present."
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
@@ -28,5 +59,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: foo_save_queue-${{ matrix.platform }}-${{ matrix.configuration }}
-          path: build/${{ matrix.platform }}/${{ matrix.configuration }}/foo_save_queue.dll
+          path: build/${{ matrix.platform == 'x86' && 'Win32' || matrix.platform }}/${{ matrix.configuration }}/foo_save_queue.dll
           if-no-files-found: error

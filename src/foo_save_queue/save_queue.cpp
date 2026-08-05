@@ -57,21 +57,24 @@ bool parse_subsong(const char* p_begin, const char* p_tab, t_uint32& p_out) {
 } // namespace
 
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-void SaveQueueToFilePath(const char* path, bool show_popups) {
+void RunSaveQueue() {
     try {
         auto pm = playlist_manager::get();
 
         if (!pm->queue_is_active()) {
-            if (show_popups) {
-                popup_message::g_show("The playback queue is empty; nothing to save.", "Save Queue");
-            }
+            popup_message::g_show("The playback queue is empty; nothing to save.", "Save Queue");
             return;
         }
 
         pfc::list_t<t_playback_queue_item> items;
         pm->queue_get_contents(items);
         const t_size count = items.get_count();
+
+        pfc::string8 path;
+        if (!uGetOpenFileName(core_api::get_main_window(), kFileDialogFilter,
+                              0, kQueueFileExt, "Save playback queue", nullptr, path, TRUE)) {
+            return; // user cancelled
+        }
 
         // Build the whole body in memory first; queue files are tiny.
         pfc::string8 body;
@@ -92,27 +95,28 @@ void SaveQueueToFilePath(const char* path, bool show_popups) {
 
         FB2K_console_formatter()
             << "Save Queue: wrote " << count << " item(s) to " << file_path_display(path);
-
-        if (show_popups) {
-            popup_message::g_show(
-                PFC_string_formatter()
-                    << "Saved " << count << " queued item(s) to:\n" << file_path_display(path),
-                "Save Queue");
-        }
+        popup_message::g_show(
+            PFC_string_formatter()
+                << "Saved " << count << " queued item(s) to:\n" << file_path_display(path),
+            "Save Queue");
     } catch (const exception_aborted&) {
         throw;
     } catch (const std::exception& e) {
-        if (show_popups) {
-            report_error("Failed to save the playback queue.", e.what());
-        } else {
-            FB2K_console_formatter() << "Save Queue error: " << e.what();
-        }
+        report_error("Failed to save the playback queue.", e.what());
     }
 }
 
 // ---------------------------------------------------------------------------
-void LoadQueueFromFilePath(const char* path, bool p_replace, bool show_popups) {
+void RunLoadQueue(bool p_replace) {
     try {
+        pfc::string8 path;
+        if (!uGetOpenFileName(core_api::get_main_window(), kFileDialogFilter,
+                              0, kQueueFileExt,
+                              p_replace ? "Load playback queue" : "Append playback queue",
+                              nullptr, path, FALSE)) {
+            return; // user cancelled
+        }
+
         // --- Read the entire file into memory. ---
         abort_callback& abort = fb2k::noAbort;
         auto in = filesystem::get(path)->openRead(path, abort, 1.0);
@@ -179,13 +183,11 @@ void LoadQueueFromFilePath(const char* path, bool p_replace, bool show_popups) {
         }
 
         if (handles.get_count() == 0) {
-            if (show_popups) {
-                popup_message::g_show(
-                    PFC_string_formatter()
-                        << "No queue entries were found in:\n" << file_path_display(path)
-                        << "\n\nMake sure this is a file saved by the Save Queue component.",
-                    "Save Queue");
-            }
+            popup_message::g_show(
+                PFC_string_formatter()
+                    << "No queue entries were found in:\n" << file_path_display(path)
+                    << "\n\nMake sure this is a file saved by the Save Queue component.",
+                "Save Queue");
             return;
         }
 
@@ -201,83 +203,16 @@ void LoadQueueFromFilePath(const char* path, bool p_replace, bool show_popups) {
         FB2K_console_formatter()
             << "Save Queue: " << (p_replace ? "loaded" : "appended") << " "
             << handles.get_count() << " item(s) from " << file_path_display(path);
-
-        if (show_popups) {
-            popup_message::g_show(
-                PFC_string_formatter()
-                    << (p_replace ? "Loaded " : "Appended ") << handles.get_count()
-                    << " queued item(s) from:\n" << file_path_display(path),
-                "Save Queue");
-        }
+        popup_message::g_show(
+            PFC_string_formatter()
+                << (p_replace ? "Loaded " : "Appended ") << handles.get_count()
+                << " queued item(s) from:\n" << file_path_display(path),
+            "Save Queue");
     } catch (const exception_aborted&) {
         throw;
     } catch (const std::exception& e) {
-        if (show_popups) {
-            report_error(
-                p_replace ? "Failed to load the playback queue." : "Failed to append the playback queue.",
-                e.what());
-        } else {
-            FB2K_console_formatter() << "Save Queue load error: " << e.what();
-        }
+        report_error(
+            p_replace ? "Failed to load the playback queue." : "Failed to append the playback queue.",
+            e.what());
     }
 }
-
-// ---------------------------------------------------------------------------
-void RunSaveQueue() {
-    auto pm = playlist_manager::get();
-    if (!pm->queue_is_active()) {
-        popup_message::g_show("The playback queue is empty; nothing to save.", "Save Queue");
-        return;
-    }
-
-    pfc::string8 path;
-    if (!uGetOpenFileName(core_api::get_main_window(), kFileDialogFilter,
-                          0, kQueueFileExt, "Save playback queue", nullptr, path, TRUE)) {
-        return; // user cancelled
-    }
-
-    SaveQueueToFilePath(path, true);
-}
-
-// ---------------------------------------------------------------------------
-void RunLoadQueue(bool p_replace) {
-    pfc::string8 path;
-    if (!uGetOpenFileName(core_api::get_main_window(), kFileDialogFilter,
-                          0, kQueueFileExt,
-                          p_replace ? "Load playback queue" : "Append playback queue",
-                          nullptr, path, FALSE)) {
-        return; // user cancelled
-    }
-
-    LoadQueueFromFilePath(path, p_replace, true);
-}
-
-// ---------------------------------------------------------------------------
-void AutoSaveQueue() {
-    pfc::string8 autoPath = core_api::pathInProfile("autosave_queue.fbq2k");
-    abort_callback& abort = fb2k::noAbort;
-
-    auto pm = playlist_manager::get();
-    if (pm->queue_is_active()) {
-        SaveQueueToFilePath(autoPath, false);
-    } else {
-        try {
-            if (filesystem::g_exists(autoPath, abort)) {
-                filesystem::g_remove(autoPath, abort);
-            }
-        } catch (...) {}
-    }
-}
-
-// ---------------------------------------------------------------------------
-void AutoLoadQueue() {
-    pfc::string8 autoPath = core_api::pathInProfile("autosave_queue.fbq2k");
-    abort_callback& abort = fb2k::noAbort;
-
-    try {
-        if (filesystem::g_exists(autoPath, abort)) {
-            LoadQueueFromFilePath(autoPath, true, false);
-        }
-    } catch (...) {}
-}
-

@@ -1,7 +1,0 @@
-<Project>
-  <ItemDefinitionGroup>
-    <ClCompile>
-      <AdditionalIncludeDirectories>E:\code\save-queue-foobar\third_party\wtl\lib\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-    </ClCompile>
-  </ItemDefinitionGroup>
-</Project>
