@@ -73,6 +73,8 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Resolve release tag and version
         id: release-info
         run: |
