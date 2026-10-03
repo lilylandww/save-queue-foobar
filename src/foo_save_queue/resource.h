@@ -5,7 +5,7 @@
 // Version-resource values for foo_save_queue. Keep in sync with the
 // DECLARE_COMPONENT_VERSION() call in main.cpp.
 #define VER_MAJOR 0
-#define VER_MINOR 1
+#define VER_MINOR 2
 #define VER_BUILD 0
 #define VER_QFE   0
 

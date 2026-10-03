@@ -9,9 +9,11 @@
 // ---------------------------------------------------------------------------
 DECLARE_COMPONENT_VERSION(
     "Save Queue",
-    "0.1.0",
+    "0.2.0",
     "Save and restore the foobar2000 playback queue.\n\n"
-    "Adds \"Save Queue\" commands to the File menu.");
+    "Adds \"Save Queue\" commands to the File menu, and automatically keeps the "
+    "playback queue across restarts: the queue is autosaved to the profile on "
+    "every change and restored on the next startup.");
 
 // Locks the component to its canonical filename so users can't accidentally
 // rename it (which would break the troubleshooter) or load two copies.

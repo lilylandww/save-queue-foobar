@@ -4,7 +4,17 @@ A [foobar2000](https://www.foobar2000.org/) component that **saves and restores 
 playback queue** to a plain-text file (`.fbq2k`). Useful for keeping a queue across
 restarts, moving it between machines, or stashing a few "play next" lists.
 
-It adds a **File → Save Queue** menu group with three commands:
+### Auto-save
+
+Stock foobar2000 clears the playback queue on exit, so the queue is lost on every
+restart. This component removes that gap: it keeps `<profile>/autosave_queue.fbq2k`
+in sync with the live queue — writing on every queue change — and restores it on the
+next startup. The queue therefore survives not only clean exits but also crashes,
+process kills, and power loss. Emptying the queue (or exiting with an empty queue)
+clears the autosave file, so a deliberately empty queue stays empty.
+
+You never need to touch the menu commands for this — they remain for explicit
+export/import. They form a **File → Save Queue** menu group with three commands:
 
 | Command | What it does |
 | --- | --- |
@@ -85,12 +95,26 @@ artifact from the run's **Artifacts** section.
 Copy `foo_save_queue.dll` into one of:
 
 - **`components\`** next to `foobar2000.exe` (installed for all users), or
-- **`%APPDATA%\foobar2000\user-components\`** (per-user; survives app upgrades).
+- **`<profile>\user-components-x64\foo_save_queue\`** (per-user; survives app
+  upgrades). The profile folder is `%APPDATA%\foobar2000` for a normal install, or a
+  `profile\` folder inside the installation for a portable one (a
+  `portable_mode_enabled` marker file is present next to `foobar2000.exe`). Put the
+  DLL in its own `foo_save_queue\` subfolder.
 
 Restart foobar2000. You should see **Save Queue** under the **File** menu.
 
 > The bit-ness of the DLL **must** match the bit-ness of foobar2000 (x64 DLL into 64-bit
 > foobar2000; Win32 DLL into 32-bit foobar2000).
+
+> Release assets are per-architecture zips (`foo_save_queue-x64.zip` for 64-bit
+> foobar2000, `foo_save_queue-x86.zip` for 32-bit); inside each is the DLL under its
+> required name, `foo_save_queue.dll` — keep that name. The component self-checks its
+> filename at startup, and a renamed DLL (e.g. one still carrying a `-x64` suffix)
+> makes foobar2000 abort with *"Internal error - one or more of the installed
+> components have been damaged; please run the foobar2000 installer again."* The same
+> error appears if the extracted DLL is still blocked by Windows (downloads carry a
+> Mark of the Web that propagates out of the zip) — unblock it (file Properties →
+> Unblock, or `Unblock-File .\foo_save_queue.dll` in PowerShell) before installing.
 
 ---
 

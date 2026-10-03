@@ -54,27 +54,42 @@ bool parse_subsong(const char* p_begin, const char* p_tab, t_uint32& p_out) {
     return true;
 }
 
+// Serialize the current queue into the on-disk text body. Returns false when
+// the queue is empty (nothing to serialize).
+bool build_queue_body(pfc::string8& p_out) {
+    auto pm = playlist_manager::get();
+    if (!pm->queue_is_active()) return false;
+
+    pfc::list_t<t_playback_queue_item> items;
+    pm->queue_get_contents(items);
+
+    p_out.reset();
+    p_out << kQueueFileMagic << "\r\n";
+    p_out << pfc::format_uint(items.get_count()) << "\r\n";
+    for (t_size i = 0; i < items.get_count(); ++i) {
+        p_out << format_handle(items[i].m_handle);
+    }
+    return true;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
-void RunSaveQueue() {
+// ---------------------------------------------------------------------------
+void SaveQueueToFilePath(const char* path, bool show_popups) {
     try {
         auto pm = playlist_manager::get();
 
         if (!pm->queue_is_active()) {
-            popup_message::g_show("The playback queue is empty; nothing to save.", "Save Queue");
+            if (show_popups) {
+                popup_message::g_show("The playback queue is empty; nothing to save.", "Save Queue");
+            }
             return;
         }
 
         pfc::list_t<t_playback_queue_item> items;
         pm->queue_get_contents(items);
         const t_size count = items.get_count();
-
-        pfc::string8 path;
-        if (!uGetOpenFileName(core_api::get_main_window(), kFileDialogFilter,
-                              0, kQueueFileExt, "Save playback queue", nullptr, path, TRUE)) {
-            return; // user cancelled
-        }
 
         // Build the whole body in memory first; queue files are tiny.
         pfc::string8 body;
@@ -89,34 +104,33 @@ void RunSaveQueue() {
         abort_callback& abort = fb2k::noAbort;
         auto lock = file_lock_manager::get()->acquire_write(path, abort);
 
-        auto out = filesystem::get(path)->openWriteNew(path, abort, 1.0);
-        out->write(body.get_ptr(), body.get_length(), abort);
-        out->set_eof(abort);
+        // rewrite_file = temp file + atomic replace; a crash mid-save cannot
+        // leave a truncated queue file.
+        filesystem::get(path)->rewrite_file(path, abort, 1.0, body.get_ptr(), body.get_length());
 
         FB2K_console_formatter()
             << "Save Queue: wrote " << count << " item(s) to " << file_path_display(path);
-        popup_message::g_show(
-            PFC_string_formatter()
-                << "Saved " << count << " queued item(s) to:\n" << file_path_display(path),
-            "Save Queue");
+
+        if (show_popups) {
+            popup_message::g_show(
+                PFC_string_formatter()
+                    << "Saved " << count << " queued item(s) to:\n" << file_path_display(path),
+                "Save Queue");
+        }
     } catch (const exception_aborted&) {
         throw;
     } catch (const std::exception& e) {
-        report_error("Failed to save the playback queue.", e.what());
+        if (show_popups) {
+            report_error("Failed to save the playback queue.", e.what());
+        } else {
+            FB2K_console_formatter() << "Save Queue error: " << e.what();
+        }
     }
 }
 
 // ---------------------------------------------------------------------------
-void RunLoadQueue(bool p_replace) {
+void LoadQueueFromFilePath(const char* path, bool p_replace, bool show_popups) {
     try {
-        pfc::string8 path;
-        if (!uGetOpenFileName(core_api::get_main_window(), kFileDialogFilter,
-                              0, kQueueFileExt,
-                              p_replace ? "Load playback queue" : "Append playback queue",
-                              nullptr, path, FALSE)) {
-            return; // user cancelled
-        }
-
         // --- Read the entire file into memory. ---
         abort_callback& abort = fb2k::noAbort;
         auto in = filesystem::get(path)->openRead(path, abort, 1.0);
@@ -183,11 +197,13 @@ void RunLoadQueue(bool p_replace) {
         }
 
         if (handles.get_count() == 0) {
-            popup_message::g_show(
-                PFC_string_formatter()
-                    << "No queue entries were found in:\n" << file_path_display(path)
-                    << "\n\nMake sure this is a file saved by the Save Queue component.",
-                "Save Queue");
+            if (show_popups) {
+                popup_message::g_show(
+                    PFC_string_formatter()
+                        << "No queue entries were found in:\n" << file_path_display(path)
+                        << "\n\nMake sure this is a file saved by the Save Queue component.",
+                    "Save Queue");
+            }
             return;
         }
 
@@ -196,23 +212,174 @@ void RunLoadQueue(bool p_replace) {
         if (p_replace) {
             pm->queue_flush();
         }
+
+        // Prefer playlist-based queue entries: the playlist UI renders queue
+        // badges for entries tied to a playlist item, while raw-handle entries
+        // (from files no longer in any playlist) may not show one. This is a
+        // full-walk lookup per entry (the SDK marks playlist_find_item as
+        // inefficient), so search the active playlist first - the one the user
+        // most likely queued from - then the rest in index order. Note the
+        // on-disk format only stores path + subsong, so which playlist the
+        // entry was originally queued from cannot be recovered exactly.
+        const t_size playlistCount = pm->get_playlist_count();
+        const t_size activePlaylist = pm->get_active_playlist();
         for (t_size i = 0; i < handles.get_count(); ++i) {
-            pm->queue_add_item(handles[i]);
+            bool queuedInPlaylist = false;
+            for (t_size order = 0; order < playlistCount && !queuedInPlaylist; ++order) {
+                const t_size p = (order == 0) ? activePlaylist : (order <= activePlaylist ? order - 1 : order);
+                if (p >= playlistCount) continue;
+                t_size item = 0;
+                if (pm->playlist_find_item(p, handles[i], item)) {
+                    pm->queue_add_item_playlist(p, item);
+                    queuedInPlaylist = true;
+                }
+            }
+            if (!queuedInPlaylist) {
+                pm->queue_add_item(handles[i]);
+            }
         }
 
         FB2K_console_formatter()
             << "Save Queue: " << (p_replace ? "loaded" : "appended") << " "
             << handles.get_count() << " item(s) from " << file_path_display(path);
-        popup_message::g_show(
-            PFC_string_formatter()
-                << (p_replace ? "Loaded " : "Appended ") << handles.get_count()
-                << " queued item(s) from:\n" << file_path_display(path),
-            "Save Queue");
+
+        if (show_popups) {
+            popup_message::g_show(
+                PFC_string_formatter()
+                    << (p_replace ? "Loaded " : "Appended ") << handles.get_count()
+                    << " queued item(s) from:\n" << file_path_display(path),
+                "Save Queue");
+        }
     } catch (const exception_aborted&) {
         throw;
     } catch (const std::exception& e) {
-        report_error(
-            p_replace ? "Failed to load the playback queue." : "Failed to append the playback queue.",
-            e.what());
+        if (show_popups) {
+            report_error(
+                p_replace ? "Failed to load the playback queue." : "Failed to append the playback queue.",
+                e.what());
+        } else {
+            FB2K_console_formatter() << "Save Queue load error: " << e.what();
+        }
     }
 }
+
+// ---------------------------------------------------------------------------
+void RunSaveQueue() {
+    auto pm = playlist_manager::get();
+    if (!pm->queue_is_active()) {
+        popup_message::g_show("The playback queue is empty; nothing to save.", "Save Queue");
+        return;
+    }
+
+    pfc::string8 path;
+    if (!uGetOpenFileName(core_api::get_main_window(), kFileDialogFilter,
+                          0, kQueueFileExt, "Save playback queue", nullptr, path, TRUE)) {
+        return; // user cancelled
+    }
+
+    SaveQueueToFilePath(path, true);
+}
+
+// ---------------------------------------------------------------------------
+void RunLoadQueue(bool p_replace) {
+    pfc::string8 path;
+    if (!uGetOpenFileName(core_api::get_main_window(), kFileDialogFilter,
+                          0, kQueueFileExt,
+                          p_replace ? "Load playback queue" : "Append playback queue",
+                          nullptr, path, FALSE)) {
+        return; // user cancelled
+    }
+
+    LoadQueueFromFilePath(path, p_replace, true);
+}
+
+namespace {
+
+// Snapshot of the last autosave payload, used to skip no-change writes.
+// Queue-change notifications can re-trigger themselves in a loop, and
+// rewriting the file on every notification made the playlist view repaint its
+// queue badges over and over (visible as flickering queue numbers). An empty
+// snapshot means the queue was empty (autosave file removed).
+pfc::string8 g_lastAutoSavedBody;
+bool g_lastAutoSaveKnown = false;
+
+// Set once the startup restore has been attempted; autosaves are gated on it
+// so a quit (or a queue-change notification) before the restore cannot wipe
+// the previous session's autosave file just because the live queue is still
+// empty. See save_queue.h.
+bool g_autoSaveReady = false;
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+void MarkAutoSaveReady() { g_autoSaveReady = true; }
+
+bool AutoSaveIsReady() { return g_autoSaveReady; }
+
+// ---------------------------------------------------------------------------
+void AutoSaveQueue() {
+    if (!g_autoSaveReady) return; // previous session's file must not be touched yet
+
+    pfc::string8 autoPath = core_api::pathInProfile("autosave_queue.fbq2k");
+    abort_callback& abort = fb2k::noAbort;
+
+    pfc::string8 body;
+    const bool queueActive = build_queue_body(body);
+
+    if (g_lastAutoSaveKnown && body == g_lastAutoSavedBody) return; // nothing changed
+    g_lastAutoSavedBody = body;
+    g_lastAutoSaveKnown = true;
+
+    try {
+        if (!queueActive) {
+            if (filesystem::g_exists(autoPath, abort)) {
+                try {
+                    filesystem::g_remove(autoPath, abort);
+                } catch (const std::exception& e) {
+                    // Deleting a locked file must not pass silently: the stale
+                    // file would resurrect a queue the user thought they
+                    // cleared on the next startup.
+                    FB2K_console_formatter()
+                        << "Save Queue: could not remove the autosave file (" << e.what() << ")";
+                }
+            }
+            return;
+        }
+
+        // Acquire a write lock so we cooperate with foobar2000 if the chosen
+        // path happens to be a file currently being played.
+        auto lock = file_lock_manager::get()->acquire_write(autoPath, abort);
+
+        // rewrite_file goes through a temporary file and an atomic replace, so
+        // a crash mid-write cannot leave a truncated queue file behind for the
+        // next startup to load.
+        filesystem::get(autoPath)->rewrite_file(
+            autoPath, abort, 1.0, body.get_ptr(), body.get_length());
+
+        FB2K_console_formatter() << "Save Queue: autosaved the playback queue ("
+                                 << file_path_display(autoPath) << ")";
+    } catch (const std::exception& e) {
+        FB2K_console_formatter() << "Save Queue: autosave failed (" << e.what() << ")";
+    } catch (...) {
+        FB2K_console_formatter() << "Save Queue: autosave failed (unknown error)";
+    }
+}
+
+// ---------------------------------------------------------------------------
+void AutoLoadQueue() {
+    pfc::string8 autoPath = core_api::pathInProfile("autosave_queue.fbq2k");
+    abort_callback& abort = fb2k::noAbort;
+
+    try {
+        if (filesystem::g_exists(autoPath, abort)) {
+            LoadQueueFromFilePath(autoPath, true, false);
+        }
+    } catch (...) {
+        FB2K_console_formatter() << "Save Queue: could not restore the autosaved queue";
+    }
+
+    // From here on the live queue reflects reality, so autosaves may treat an
+    // empty queue as "user cleared it" again.
+    MarkAutoSaveReady();
+}
+

@@ -80,7 +80,8 @@ boilerplate needed) is handled by `foobar2000_component_client`.
 | --- | --- |
 | `main.cpp` | `DECLARE_COMPONENT_VERSION` (mandatory metadata), `VALIDATE_COMPONENT_FILENAME`, `FOOBAR2000_IMPLEMENT_CFG_VAR_DOWNGRADE`. |
 | `mainmenu.cpp` | A `mainmenu_group_popup_factory` ("Save Queue" under File) + a `mainmenu_commands` implementation with three commands. Each command's `execute()` calls into `save_queue.cpp`. |
-| `save_queue.cpp` | Reads/writes `.fbq2k` files; talks to the queue via `playlist_manager` and resolves tracks via `metadb`. |
+| `save_queue.cpp` | Reads/writes `.fbq2k` files; talks to the queue via `playlist_manager` and resolves tracks via `metadb`. Also implements the autosave (`AutoSaveQueue`/`AutoLoadQueue`), which keeps `<profile>/autosave_queue.fbq2k` in sync with the live queue (content-deduplicated, atomic writes via `filesystem::rewrite_file`). |
+| `auto_save_hooks.cpp` | Registers the autosave services: an `init_stage_callback` on `init_stages::after_ui_init` that queues the startup restore onto the main thread, an `initquit` for the save-on-exit, and a `playback_queue_callback` that schedules an autosave whenever the queue changes. |
 
 ## SDK APIs used
 
@@ -133,8 +134,11 @@ The last `BOOL` selects save (TRUE) vs open (FALSE).
 ## Threading
 
 All `playlist_manager`, `metadb`, and UI calls in this component happen on the **main
-app thread** (they're invoked synchronously from a main-menu command handler, which the
-SDK guarantees runs on the main thread). That keeps the implementation simple and avoids
-needing `main_thread_callback`. The file reads/writes are quick local-file operations
-using `fb2k::noAbort`; if you later add large/remote operations, move them to a
+app thread**. Menu commands run there by definition. The autosave hooks defer work with
+`fb2k::inMainThread` so file I/O never happens inside the core's queue-change dispatch
+(`playback_queue_callback::on_changed`); a content snapshot makes no-change notifications
+a no-op. Startup restore runs from `init_stages::after_ui_init`, and autosaves are gated
+on the restore having been attempted so a short session cannot delete the previous
+session's file. The file reads/writes are quick local-file operations using
+`fb2k::noAbort`; if you later add large/remote operations, move them to a
 `threaded_process_callback` and pass a real `abort_callback`.
