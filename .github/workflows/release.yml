@@ -112,8 +112,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.release-info.outputs.tag }}" \
-            release-assets/foo_save_queue-x86.zip \
-            release-assets/foo_save_queue-x64.zip \
+            foo_save_queue-x86.zip \
+            foo_save_queue-x64.zip \
             --title "foo_save_queue ${{ steps.release-info.outputs.version }}" \
             --generate-notes \
             --target "${{ github.sha }}"
