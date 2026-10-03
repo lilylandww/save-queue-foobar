@@ -95,22 +95,25 @@ jobs:
         with:
           path: dist
 
+      # Each archive carries the DLL under its canonical filename. Raw .dll assets
+      # can't be attached directly: x86/x64 builds would collide, and the suffixed
+      # names users would download break VALIDATE_COMPONENT_FILENAME at startup.
       - name: Assemble release assets
         run: |
           set -euo pipefail
-          mkdir -p release-assets
-          mv "dist/foo_save_queue-x86/foo_save_queue.dll" release-assets/foo_save_queue-x86.dll
-          mv "dist/foo_save_queue-x64/foo_save_queue.dll" release-assets/foo_save_queue-x64.dll
-          (cd release-assets && zip "../foo_save_queue-${{ steps.release-info.outputs.version }}.zip" foo_save_queue-x86.dll foo_save_queue-x64.dll)
+          mkdir -p release-assets/x86 release-assets/x64
+          cp "dist/foo_save_queue-x86/foo_save_queue.dll" release-assets/x86/foo_save_queue.dll
+          cp "dist/foo_save_queue-x64/foo_save_queue.dll" release-assets/x64/foo_save_queue.dll
+          (cd release-assets/x86 && zip "../../foo_save_queue-x86.zip" foo_save_queue.dll)
+          (cd release-assets/x64 && zip "../../foo_save_queue-x64.zip" foo_save_queue.dll)
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.release-info.outputs.tag }}" \
-            release-assets/foo_save_queue-x86.dll \
-            release-assets/foo_save_queue-x64.dll \
-            "foo_save_queue-${{ steps.release-info.outputs.version }}.zip" \
+            release-assets/foo_save_queue-x86.zip \
+            release-assets/foo_save_queue-x64.zip \
             --title "foo_save_queue ${{ steps.release-info.outputs.version }}" \
             --generate-notes \
             --target "${{ github.sha }}"
